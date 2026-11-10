@@ -1,0 +1,201 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>US AI Trader</title>
+<style>
+*{box-sizing:border-box}
+body{background:#0b1220;color:#fff;font-family:Arial,sans-serif;margin:0;padding:15px}
+h1{text-align:center;color:#38bdf8}
+.sub{text-align:center;color:#94a3b8}
+.card{background:#1e293b;border-radius:14px;padding:17px;margin:14px 0}
+.big{font-size:28px;color:#4ade80;font-weight:bold}
+button{border:0;border-radius:8px;padding:12px;background:#0284c7;color:white;margin:4px 2px;font-weight:bold}
+.sell{background:#dc2626}
+input,select{background:#fff;color:#111;padding:11px;border-radius:8px;border:0;max-width:100%}
+li{margin:10px 0;overflow-wrap:anywhere}
+small{color:#94a3b8}
+</style>
+</head>
+<body>
+<h1>US AI Trader</h1>
+<p class="sub">NASDAQ Sanal İşlem Motoru</p>
+
+<div class="card">
+<small>Sanal nakit</small>
+<div class="big" id="cash"></div>
+<p id="equity"></p>
+</div>
+
+<div class="card">
+<h3>Hisse işlemleri</h3>
+<select id="stock" onchange="render()"></select>
+<p id="price"></p>
+<label>Adet: </label>
+<input type="number" id="qty" value="1" min="1" step="1">
+<p>
+<button onclick="trade('AL')">Sanal AL</button>
+<button class="sell" onclick="trade('SAT')">Sanal SAT</button>
+</p>
+<p id="message"></p>
+</div>
+
+<div class="card">
+<h3>Portföy</h3>
+<ul id="portfolio"></ul>
+</div>
+
+<div class="card">
+<h3>5 dakikalık simülasyon</h3>
+<p id="clock"></p>
+<button onclick="tick()">5 dakika ilerlet</button>
+<button onclick="dayReport()">Gün sonu raporu</button>
+<p id="report"></p>
+</div>
+
+<div class="card">
+<h3>İşlem geçmişi</h3>
+<ul id="history"></ul>
+</div>
+
+<small>Bu uygulama eğitim amaçlıdır. Fiyatlar yapay olarak üretilir, gerçek piyasa verisi değildir. Gerçek emir göndermez.</small>
+
+<script>
+const initial={
+AAPL:250,
+NVDA:190,
+TSLA:400,
+MSFT:500,
+AMZN:230
+};
+const storageKey="us_ai_trader_v1";
+let saved=null;
+try{
+saved=JSON.parse(localStorage.getItem(storageKey));
+}catch(e){}
+
+let state={
+cash:10000,
+holdings:{},
+history:[],
+prices:{...initial},
+minutes:0
+};
+if(saved && typeof saved.cash==="number" &&
+saved.prices && saved.holdings &&
+Array.isArray(saved.history)){
+state={...state,...saved};
+}
+
+const el=id=>document.getElementById(id);
+const fmt=n=>Number(n).toLocaleString("tr-TR",{
+minimumFractionDigits:2,
+maximumFractionDigits:2
+});
+
+Object.keys(initial).forEach(s=>{
+el("stock").add(new Option(s,s));
+});
+
+function save(){
+try{
+localStorage.setItem(storageKey,JSON.stringify(state));
+}catch(e){}
+}
+
+function totalValue(){
+let total=state.cash;
+for(const [s,q] of Object.entries(state.holdings)){
+total+=q*(state.prices[s]||0);
+}
+return total;
+}
+
+function render(){
+const s=el("stock").value;
+el("cash").textContent=fmt(state.cash)+" TL";
+el("equity").textContent=
+"Toplam sanal portföy: "+fmt(totalValue())+" TL";
+el("price").textContent=
+s+" örnek fiyat: "+fmt(state.prices[s])+" TL";
+
+let portfolio="";
+for(const [symbol,qty] of Object.entries(state.holdings)){
+if(qty>0){
+portfolio+="<li>"+symbol+": "+qty+
+" adet — "+fmt(qty*state.prices[symbol])+" TL</li>";
+}
+}
+el("portfolio").innerHTML=portfolio||"<li>Henüz hisse yok.</li>";
+
+el("history").innerHTML=state.history.slice(-20).reverse()
+.map(h=>"<li>"+h+"</li>").join("")||
+"<li>Henüz işlem yok.</li>";
+
+el("clock").textContent=
+"Geçen simülasyon süresi: "+state.minutes+" dakika";
+}
+
+function trade(type){
+const s=el("stock").value;
+const q=Number(el("qty").value);
+if(!Number.isSafeInteger(q)||q<=0){
+el("message").textContent="Geçerli adet girin.";
+return;
+}
+const cost=Math.round(q*state.prices[s]*100)/100;
+if(!Number.isFinite(cost)||cost<=0){
+el("message").textContent="Geçersiz işlem tutarı.";
+return;
+}
+if(type==="AL"){
+if(cost>state.cash+0.000001){
+el("message").textContent="Sanal bakiye yetersiz.";
+return;
+}
+state.cash=Math.round((state.cash-cost)*100)/100;
+state.holdings[s]=(state.holdings[s]||0)+q;
+}else{
+if((state.holdings[s]||0)<q){
+el("message").textContent="Yeterli hisse yok.";
+return;
+}
+state.cash=Math.round((state.cash+cost)*100)/100;
+state.holdings[s]-=q;
+}
+state.history.push(
+type+" "+q+" "+s+" @ "+fmt(state.prices[s])+
+" TL (Dakika "+state.minutes+")"
+);
+el("message").textContent="Sanal işlem tamamlandı.";
+save();
+render();
+}
+
+function tick(){
+for(const s of Object.keys(state.prices)){
+const change=(Math.random()-0.5)*0.02;
+state.prices[s]=Math.round(
+Math.max(0.01,state.prices[s]*(1+change))*100
+)/100;
+}
+state.minutes+=5;
+save();
+render();
+}
+
+function dayReport(){
+const value=totalValue();
+const gain=value-10000;
+el("report").textContent=
+"Toplam değer: "+fmt(value)+" TL | "+
+"Başlangıca göre fark: "+fmt(gain)+" TL | "+
+"İşlem sayısı: "+state.history.length+
+". Bu rapor simülasyon başlangıcından itibarendir.";
+}
+render();
+</script>
+</body>
+</html>
